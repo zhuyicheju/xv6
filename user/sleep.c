@@ -9,10 +9,6 @@ int main(int argc, char* argv[]){
     }
 
     int time = atoi(argv[1]);
-    fprintf(1, " Sleep %ds\n", time);
-    int ret = sleep(time);
-    if(ret != 0){
-        fprintf(1, "Sleep interrupt with %ds left\n", ret);
-    }
+    sleep(time);
     exit(0);
 }
