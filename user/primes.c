@@ -7,7 +7,7 @@ int p[2*N];
 int primes[N];
 
 void solve(int step){
-    if(step == N) exit(0);
+    if(step >= N) return;
     if(fork() == 0){
         int prime, buf;
         read(p[step * 2], &prime, sizeof(int)); // the read point of the first pipe
@@ -20,7 +20,6 @@ void solve(int step){
         }
         close(p[step * 2 + 3]);
         close(p[step * 2]);
-        exit(0);
     }
 }
 
@@ -32,5 +31,5 @@ int main () {
         write(p[1], &i, sizeof(int));
     }
     solve(0);
-    exit(0);    
+    exit(0);
 }
