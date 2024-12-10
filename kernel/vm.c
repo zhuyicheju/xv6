@@ -233,7 +233,9 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
+#ifndef LAB_SYSCALL
     memset(mem, 0, PGSIZE);
+#endif
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
