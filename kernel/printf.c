@@ -90,6 +90,9 @@ printf(char *fmt, ...)
     case 'x':
       printint(va_arg(ap, int), 16, 1);
       break;
+    case 'l':
+      printint(va_arg(ap, uint64), 10, 0);
+      break;
     case 'p':
       printptr(va_arg(ap, uint64));
       break;
