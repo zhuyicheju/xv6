@@ -84,3 +84,12 @@ kalloc(void)
 #endif
   return (void*)r;
 }
+
+uint64
+freemem(){
+  int i = 0;
+  struct run* r;
+  for(r = kmem.freelist; r != 0; r = r->next,i++)
+    ;
+  return PGSIZE * i;
+}

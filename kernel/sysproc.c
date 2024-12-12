@@ -101,3 +101,23 @@ sys_trace(void)
   argint(0, &myproc()->trace_mask);
   return 0;
 }
+
+#include "sysinfo.h"
+extern uint64 freemem(void);
+extern uint64 nproc(void);
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;  
+  if(argaddr(0, &addr) < 0)
+    return -1;
+  struct sysinfo info;
+  info.freemem = freemem();
+  info.nproc = nproc();
+
+  struct proc *p = myproc();
+  if(addr == 0 || copyout(p->pagetable, addr, (char*)&info, sizeof(struct sysinfo)))
+    return -1;
+  return 0;
+}
