@@ -84,7 +84,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
+    pte_t* pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
@@ -96,6 +96,29 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   }
   return &pagetable[PX(0, va)];
 }
+
+// uint64
+// traverse(pagetable_t pagetable, uint64 va, int num)
+// {
+//   if(va >= MAXVA)
+//     panic("traverse");
+//   uint mask = 0;
+//   pagetable_t pgtbl[3];
+//   int pgcnt[3];
+//   pgtbl[2] = pagetable; 
+//   for(int level = 2; level > 0; level --){
+//     pte_t pte = pgtbl[level][PX(level, va)];
+//     pgcnt[level] = PX(level, va);
+//     if(*pte & PTE_V){
+//       pgtbl[level-1] = (pagetable_t)PTE2PA(pte);
+//     }else{
+//       pgcnt[level-1] = 513;
+//     }
+//   }
+//   while(num--){
+//   }
+// }
+
 
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
@@ -281,6 +304,24 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+void dfs(pagetable_t pagetable,int level){
+  if(level < 0) return;
+  for(uint i = 0;i < 512;i ++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      uint64 child = PTE2PA(pte);
+      for(int _ = level;_ <= 3; _++) printf(".. ");
+      printf("%d pte 0x%p pa 0x%p\n", i, pte, child);
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0)
+        dfs((pagetable_t)child, level-1);
+    }
+  }
+}
+void vmprint(pagetable_t pagetable){
+  printf("pagetable 0x%p\n", pagetable);
+  dfs(pagetable,3);
+}
+
 // Free user memory pages,
 // then free page-table pages.
 void
@@ -432,3 +473,4 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
