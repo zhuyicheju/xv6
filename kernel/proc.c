@@ -127,6 +127,15 @@ found:
     return 0;
   }
 
+  if((p->regs = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  p->inhandler = 0;
+  p->interval = 0x3f3f3f3f;
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
