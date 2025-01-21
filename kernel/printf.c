@@ -138,9 +138,14 @@ void backtrace(void){
   printf("backtrace:\n");
   uint64 fp = r_fp();
   uint64 top = PGROUNDUP(fp), btm = PGROUNDDOWN(fp);
-  while(top >= fp && btm <= fp) {
-    printf("frame pointer: %p\n", fp);
-    printf("return   addr: %p\n", *(uint64*)(fp - 8));
-    fp = *(uint64*)(fp - 16);
+  if(top < fp || btm > fp) return;
+  while(1) {
+    //printf("frame pointer: %p\n", fp);
+    uint64 _fp = *(uint64*)(fp - 16);
+    if(top >= _fp && btm <= _fp)
+      printf("%p\n", *(uint64*)(fp - 8));
+    else 
+      break;
+    fp = _fp;
   }
 }
