@@ -16,6 +16,8 @@ void kernelvec();
 
 extern int devintr();
 
+void pagefault();
+
 void
 trapinit(void)
 {
@@ -67,10 +69,12 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if (r_scause() == 0xf){
+    pagefault();
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    p->killed = 1; 
   }
 
   if(p->killed)
@@ -81,6 +85,8 @@ usertrap(void)
     yield();
 
   usertrapret();
+
+
 }
 
 //
@@ -218,3 +224,40 @@ devintr()
   }
 }
 
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc);
+int refcow(uint64 pa,int add);
+
+void pagefault(){
+  char* mem;
+  uint64 va = r_stval(), pa;
+  uint flags;
+  struct proc* p = myproc();
+  pte_t* pte = walk(p->pagetable, va, 0);
+  flags = PTE_FLAGS(*pte);
+  pa = PTE2PA(*pte);
+  if(flags & PTE_COW){
+    flags = flags | PTE_W;
+    flags = flags & (~PTE_COW);
+    if(refcow(pa,0) == 1){
+      //refcow(pa, -1);
+      mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, pa, flags);
+    }else{
+      uvmunmap(p->pagetable, PGROUNDDOWN(va) , 1, 1);
+      
+      if((mem = kalloc()) == 0){
+        printf("Fail to allocate\n");
+        p->killed = 1;
+      }
+      memmove(mem, (char*)pa, PGSIZE);
+      refcow(pa, -1);
+      if((mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, flags)) != 0){
+        printf("Fail to Mappages\n");
+        p->killed = 1;
+      }
+    }
+  }else{
+    printf("Write to Illegal Address: %p\n", va);
+    p->killed = 1;
+  }
+}
