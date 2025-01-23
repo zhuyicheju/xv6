@@ -50,15 +50,15 @@ int refcow(uint64 pa,int add);
 void
 kfree(void *pa)
 {
-   if((uint64)pa >= KERNBASE && (uint64)pa < PHYSTOP)
-   if(refcow((uint64)pa,0) > 1)
-     printf("%p %d\n",(uint64)pa,refcow((uint64)pa,0));
   struct run *r;
 
+  //refcow((uint64)pa, -refcow((uint64)pa, 0) + 1);
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  //cow
+  // if(refcow((uint64)pa, -1) == 0){
 
     // Fill with junk to catch dangling refs.
     memset(pa, 1, PGSIZE);

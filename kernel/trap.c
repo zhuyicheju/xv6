@@ -240,7 +240,7 @@ void pagefault(){
   if(flags & PTE_COW){
     flags = flags | PTE_W;
     flags = flags & (~PTE_COW);
-    if(refcow(pa,0) <= 2){
+    if(refcow(pa,0) == 2){
       *pte &= ~ 0x3FF;
       *pte |= flags;
     }else{
@@ -257,6 +257,7 @@ void pagefault(){
         p->killed = 1;
       }
     }
+
   }else{
 err:
     printf("Write to Illegal Address: %p\n", va);

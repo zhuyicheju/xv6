@@ -12,6 +12,7 @@
  * the kernel's page table.
  */
 int cow[32768] = {0};
+
 struct spinlock cowlock;
 
 pagetable_t kernel_pagetable;
@@ -22,14 +23,9 @@ extern char trampoline[]; // trampoline.S
 
 
 int refcow(uint64 pa,int add) {
-  uint64 _ = pa;
   pa &= 0x7FFFFFFF;
   pa = pa >> PGSHIFT;
-  if(pa >= 32768)
-    printf("assert %p %u",_,pa);
-  acquire(&cowlock);
   cow[pa] += add;
-  release(&cowlock);
   return cow[pa];
 }
 
@@ -71,6 +67,7 @@ kvmmake(void)
 void
 kvminit(void)
 {
+  initlock(&cowlock, "cowlock");
   kernel_pagetable = kvmmake();
 }
 
@@ -200,7 +197,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      if(refcow(pa, -1) <= 1){
+      if(refcow(pa, -1) == 1){
         kfree((void*)pa);
       }
     }
@@ -300,8 +297,9 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  if(refcow((uint64)pagetable,-1)<=1)
-    kfree((void*)pagetable);
+  //if(refcow((uint64)pagetable,-1) == 1)
+  //this place hide 3 hours
+  kfree((void*)pagetable);
 }
 
 // Free user memory pages,
@@ -384,15 +382,16 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa = walkaddr(pagetable, va0);
-    if(pa == 0)
+    if(pa == 0){
       return -1;
+      }
     pte_t* pte = walk(pagetable, va0, 0);
     flags = PTE_FLAGS(*pte);
     pa = PTE2PA(*pte);
     if(flags & PTE_COW){
       flags = flags | PTE_W;
       flags = flags & (~PTE_COW);
-      if(refcow(pa,0) <= 2){
+      if(refcow(pa,0) == 2){
         *pte &= ~ 0x3FF;
         *pte |= flags;
       }else{
@@ -401,8 +400,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
           p->killed = 1;
           return -1;
         }
-        memmove(mem, (char*)pa, PGSIZE);
         uvmunmap(p->pagetable, PGROUNDDOWN(va0) , 1, 1);
+        memmove(mem, (char*)pa, PGSIZE);
         if((mappages(p->pagetable, PGROUNDDOWN(va0), PGSIZE, (uint64)mem, flags)) != 0){
           printf("Copyout: Fail to Mappages\n");
           p->killed = 1;

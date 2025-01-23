@@ -154,7 +154,7 @@ freeproc(struct proc *p)
   if(p->trapframe){
     if(p->pagetable)
       refcow((uint64)p->trapframe,-1);
-    if(refcow((uint64)p->trapframe,0) <= 1)
+    if(refcow((uint64)p->trapframe,0) == 1)
       kfree((void*)p->trapframe);
   }
   
