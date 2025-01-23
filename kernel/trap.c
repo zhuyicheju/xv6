@@ -231,32 +231,34 @@ int refcow(uint64 pa,int add);
 void pagefault(){
   char* mem;
   uint64 va = r_stval(), pa;
-  uint flags;
   struct proc* p = myproc();
+  if(va >= MAXVA) goto err;
+  uint flags;
   pte_t* pte = walk(p->pagetable, va, 0);
   flags = PTE_FLAGS(*pte);
   pa = PTE2PA(*pte);
   if(flags & PTE_COW){
     flags = flags | PTE_W;
     flags = flags & (~PTE_COW);
-    if(refcow(pa,0) == 1){
-      //refcow(pa, -1);
-      mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, pa, flags);
+    if(refcow(pa,0) <= 2){
+      *pte &= ~ 0x3FF;
+      *pte |= flags;
     }else{
-      uvmunmap(p->pagetable, PGROUNDDOWN(va) , 1, 1);
       
       if((mem = kalloc()) == 0){
         printf("Fail to allocate\n");
         p->killed = 1;
+        return;
       }
+      uvmunmap(p->pagetable, PGROUNDDOWN(va) , 1, 1);
       memmove(mem, (char*)pa, PGSIZE);
-      refcow(pa, -1);
       if((mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, flags)) != 0){
         printf("Fail to Mappages\n");
         p->killed = 1;
       }
     }
   }else{
+err:
     printf("Write to Illegal Address: %p\n", va);
     p->killed = 1;
   }

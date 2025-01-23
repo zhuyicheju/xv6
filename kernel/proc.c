@@ -147,14 +147,21 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+int refcow(uint64 pa,int add);
 static void
 freeproc(struct proc *p)
 {
-  if(p->trapframe)
-    kfree((void*)p->trapframe);
+  if(p->trapframe){
+    if(p->pagetable)
+      refcow((uint64)p->trapframe,-1);
+    if(refcow((uint64)p->trapframe,0) <= 1)
+      kfree((void*)p->trapframe);
+  }
+  
   p->trapframe = 0;
-  if(p->pagetable)
+  if(p->pagetable){
     proc_freepagetable(p->pagetable, p->sz);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -204,8 +211,11 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
+  //地址空间上部uvmfree无法释放,所以提前解绑
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+
+  //解绑并释放地址空间下部
   uvmfree(pagetable, sz);
 }
 

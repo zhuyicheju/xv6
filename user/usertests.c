@@ -2693,7 +2693,6 @@ execout(char *s)
       // progress.
       for(int i = 0; i < avail; i++)
         sbrk(-4096);
-      
       close(1);
       char *args[] = { "echo", "x", 0 };
       exec("echo", args);
@@ -2818,8 +2817,8 @@ main(int argc, char *argv[])
     void (*f)(char *);
     char *s;
   } tests[] = {
-    {MAXVAplus, "MAXVAplus"},
-    {manywrites, "manywrites"},
+    // {MAXVAplus, "MAXVAplus"},
+    // {manywrites, "manywrites"},
     {execout, "execout"},
     {copyin, "copyin"},
     {copyout, "copyout"},

@@ -5,20 +5,32 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
  */
+int cow[32768] = {0};
+struct spinlock cowlock;
+
 pagetable_t kernel_pagetable;
 
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-static int cow[128*1024*1024 >> 12] = {0};
+
 int refcow(uint64 pa,int add) {
-  cow[pa>>PGSHIFT] += add;
-  return cow[pa>>PGSHIFT];
+  uint64 _ = pa;
+  pa &= 0x7FFFFFFF;
+  pa = pa >> PGSHIFT;
+  if(pa >= 32768)
+    printf("assert %p %u",_,pa);
+  acquire(&cowlock);
+  cow[pa] += add;
+  release(&cowlock);
+  return cow[pa];
 }
 
 // Make a direct-map page table for the kernel.
@@ -97,7 +109,6 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
-      refcow(PA2PTE(pagetable), 1);
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
@@ -157,7 +168,8 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
       return -1;
     if(*pte & PTE_V)
       panic("mappages: remap");
-    refcow(PA2PTE(pa), 1);
+    if(pa < PHYSTOP && pa >= KERNBASE)
+    refcow(pa, 1);
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -188,7 +200,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      if(refcow(pa, -1) == 0){
+      if(refcow(pa, -1) <= 1){
         kfree((void*)pa);
       }
     }
@@ -288,7 +300,8 @@ freewalk(pagetable_t pagetable)
       panic("freewalk: leaf");
     }
   }
-  kfree((void*)pagetable);
+  if(refcow((uint64)pagetable,-1)<=1)
+    kfree((void*)pagetable);
 }
 
 // Free user memory pages,
@@ -363,17 +376,46 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
-  uint64 n, va0, pa0;
+  uint64 n, va0, pa;
+  char* mem;
+  uint flags;
+  struct proc* p = myproc();
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    pa = walkaddr(pagetable, va0);
+    if(pa == 0)
       return -1;
+    pte_t* pte = walk(pagetable, va0, 0);
+    flags = PTE_FLAGS(*pte);
+    pa = PTE2PA(*pte);
+    if(flags & PTE_COW){
+      flags = flags | PTE_W;
+      flags = flags & (~PTE_COW);
+      if(refcow(pa,0) <= 2){
+        *pte &= ~ 0x3FF;
+        *pte |= flags;
+      }else{
+        if((mem = kalloc()) == 0){
+          printf("Copyout: Fail to allocate\n");
+          p->killed = 1;
+          return -1;
+        }
+        memmove(mem, (char*)pa, PGSIZE);
+        uvmunmap(p->pagetable, PGROUNDDOWN(va0) , 1, 1);
+        if((mappages(p->pagetable, PGROUNDDOWN(va0), PGSIZE, (uint64)mem, flags)) != 0){
+          printf("Copyout: Fail to Mappages\n");
+          p->killed = 1;
+          return -1;
+        }
+        pa = (uint64)mem;
+      }
+    }
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
+    memmove((void *)(pa + (dstva - va0)), src, n);
 
     len -= n;
     src += n;
