@@ -152,6 +152,7 @@ static void
 freeproc(struct proc *p)
 {
   if(p->trapframe){
+  //This place spends me hours, the first hardest place;
     if(p->pagetable)
       refcow((uint64)p->trapframe,-1);
     if(refcow((uint64)p->trapframe,0) == 1)
