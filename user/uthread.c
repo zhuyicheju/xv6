@@ -74,14 +74,10 @@ thread_create(void (*func)())
   }
   t->state = RUNNABLE;
 
-  // YOUR CODE HERE
-  // *(uint64*)&t->stack[0] = (uint64)func;
-  // asm volatile ("sd %0, 0(%1)": :"r" ((uint64)func), "r" ((uint64)&(t->stack[0]))
-  // );
   *(uint64*)t->stack = (uint64)func;
+  //this place cannot be STACKSIZE-1, since sp is 64bit and it will overright next element
   *((uint64*)(t->stack+8)) = (uint64)(t->stack + STACK_SIZE-8);
-  //printf("%p\n",(uint64)(t->stack + 112));
-
+  
 }
 
 void 
