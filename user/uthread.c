@@ -10,11 +10,10 @@
 #define STACK_SIZE  8192
 #define MAX_THREAD  4
 
-
 struct thread {
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
-};
+}; 
 struct thread all_thread[MAX_THREAD];
 struct thread *current_thread;
 extern void thread_switch(uint64, uint64);
@@ -58,10 +57,9 @@ thread_schedule(void)
     next_thread->state = RUNNING;
     t = current_thread;
     current_thread = next_thread;
-    /* YOUR CODE HERE
-     * Invoke thread_switch to switch from t to next_thread:
-     * thread_switch(??, ??);
-     */
+
+    thread_switch((uint64)t->stack, (uint64)current_thread->stack);
+
   } else
     next_thread = 0;
 }
@@ -75,7 +73,15 @@ thread_create(void (*func)())
     if (t->state == FREE) break;
   }
   t->state = RUNNABLE;
+
   // YOUR CODE HERE
+  // *(uint64*)&t->stack[0] = (uint64)func;
+  // asm volatile ("sd %0, 0(%1)": :"r" ((uint64)func), "r" ((uint64)&(t->stack[0]))
+  // );
+  *(uint64*)t->stack = (uint64)func;
+  *((uint64*)(t->stack+8)) = (uint64)(t->stack + STACK_SIZE-8);
+  //printf("%p\n",(uint64)(t->stack + 112));
+
 }
 
 void 
@@ -84,6 +90,11 @@ thread_yield(void)
   current_thread->state = RUNNABLE;
   thread_schedule();
 }
+
+
+
+
+
 
 volatile int a_started, b_started, c_started;
 volatile int a_n, b_n, c_n;
@@ -113,6 +124,7 @@ thread_b(void)
 {
   int i;
   printf("thread_b started\n");
+
   b_started = 1;
   while(a_started == 0 || c_started == 0)
     thread_yield();
