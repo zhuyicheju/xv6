@@ -207,7 +207,6 @@ sys_unlink(void)
   if((ip = dirlookup(dp, name, &off)) == 0)
     goto bad;
   ilock(ip);
-
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
   if(ip->type == T_DIR && !isdirempty(ip)){
@@ -243,12 +242,9 @@ create(char *path, short type, short major, short minor)
 {
   struct inode *ip, *dp;
   char name[DIRSIZ];
-
   if((dp = nameiparent(path, name)) == 0)
     return 0;
-
   ilock(dp);
-
   if((ip = dirlookup(dp, name, 0)) != 0){
     iunlockput(dp);
     ilock(ip);
@@ -329,17 +325,19 @@ sys_open(void)
   }
   
   int depth = 0;
+  if(ip->type == T_SYMLINK)
   if(!(omode & O_NOFOLLOW))
     while(ip->type == T_SYMLINK){
-      readi(ip, 0, (uint64)path, 0, MAXPATH);
-      iunlockput(ip);
-      if((ip = namei(path)) == 0){
+      if(depth == 10){
+        iunlockput(ip);
         end_op();
         return -1;
       }
-
       depth ++;
-      if(depth >= 10){
+      memset(path,0,sizeof(path));
+      readi(ip, 0, (uint64)path, 0, MAXPATH);
+      iunlockput(ip);
+      if((ip = namei(path)) == 0){
         end_op();
         return -1;
       }
@@ -511,6 +509,7 @@ sys_pipe(void)
 uint64 sys_symlink(void)
 {
   char target[MAXPATH], path[MAXPATH];
+  memset(target, 0, sizeof(target));
   struct inode* dp;
   if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
     return -1;
@@ -524,11 +523,11 @@ uint64 sys_symlink(void)
   }
 
   if(writei(dp, 0, (uint64)target, 0, MAXPATH)!=MAXPATH){
-    iunlock(dp);
+    iunlockput(dp);
     end_op();
     return -1;
   }
-  iunlock(dp);
+  iunlockput(dp);
   end_op();
   return 0;
 }
