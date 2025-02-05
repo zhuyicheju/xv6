@@ -5,6 +5,11 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+
 
 struct spinlock tickslock;
 uint ticks;
@@ -15,6 +20,11 @@ extern char trampoline[], uservec[], userret[];
 void kernelvec();
 
 extern int devintr();
+
+static void pagefault();
+
+pte_t *
+walk(pagetable_t pagetable, uint64 va, int alloc);
 
 void
 trapinit(void)
@@ -67,7 +77,9 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if(r_scause() == 0xd || r_scause() == 0xf) {
+    pagefault();
+  }else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -218,3 +230,42 @@ devintr()
   }
 }
 
+void pagefault(){
+  uint64 va = r_stval(), pa;
+  struct proc* p = myproc();
+  if(va >= MAXVA) goto err;
+  struct mmap* map;
+  struct inode* ip;
+  int i, flags = 0;
+  int len;
+  
+  if(walk(p->pagetable, va, 0) != 0) //reallocate
+    goto err;
+
+  map = p->map;
+  for(i = 0; i < MAPSIZE; i ++){
+    if(map->valid && map->addr <= va && map->length + map->addr > va)
+      break;
+    map ++;
+  }
+  if(i == MAPSIZE)
+    goto err;
+  
+  ip = map->file->ip;
+  flags |= map->flags;  
+  pte_t* pte = walk(p->pagetable, va, 1); //allocate a page
+  *pte |= flags;
+  pa = PTE2PA(*pte);
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+  len = min(PGSIZE, map->length - (va-map->addr));
+
+  ilock(ip);
+  readi(ip, 0, pa, map->offset + (va-map->addr), len);
+  iunlock(ip);
+  return;
+
+err:
+    printf("Write to Illegal Address: %p\n", va);
+    p->killed = 1;
+}

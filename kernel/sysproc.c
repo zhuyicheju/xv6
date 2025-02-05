@@ -7,6 +7,9 @@
 #include "spinlock.h"
 #include "proc.h"
 
+uint64 dommap(uint64 addr, int length, int prot, int flags, struct file* f, int offset);
+uint64 munmap(uint64 addr, int length);
+
 uint64
 sys_exit(void)
 {
@@ -100,46 +103,26 @@ uint64
 sys_mmap(void)
 {
   uint64 addr;
-  size_t length;
-  int prot, flags;
-  off_t offset;
+  int length;
+  int prot, flags, fd;
+  int offset;
 
-  int i;
-  struct proc* p;
-  struct map* map;
-
-  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, prot) < 0 || 
-     argint(3, &flags) < 0 || argint(4, &offset) < 0)
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 || 
+     argint(3, &flags) < 0 || argint(4, &fd) < 0 || argint(5, &offset) < 0)
     return -1;
 
-  p = myproc();
-  map = p->map;
-
-  for(i = 0; i < MAPSIZE; i ++){
-    if(map->valid)
-      break;
-    map ++;
-  }
-  if(i == MAPSIZE)
-    panic("No free mmap.");
-
-  map->valid  = 1;
-  map->fd     = fd;
-  map->length = length;
-  map->prot   = prot;
-  map->flags  = flags;
-
+  return dommap(addr, length, prot, flags, myproc()->ofile[fd], offset);
   
-
-
 }
 
 uint64
 sys_munmap(void)
 {
   uint64 addr;
-  size_t length;
+  int length;
+
   if(argaddr(0, &addr) < 0 || argint(0, &length) < 0)
     return -1;
 
+  return munmap(addr, length);
 }

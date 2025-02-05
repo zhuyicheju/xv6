@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
 
 struct cpu cpus[NCPU];
 
@@ -18,7 +22,10 @@ struct spinlock pid_lock;
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
-static void proc_mmap(struct proc* p); 
+uint64 munmap(uint64 addr, int length);
+uint64 dommap(uint64 addr, int length, int prot, int flags, struct file* f, int offset);
+
+static void proc_map(struct proc* p); 
 
 extern char trampoline[]; // trampoline.S
 
@@ -131,7 +138,7 @@ found:
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
-  p->map       = proc_map(p);
+  proc_map(p);
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -275,6 +282,14 @@ growproc(int n)
   return 0;
 }
 
+static int mapgrow(int n){
+  uint sz;
+  struct proc *p = myproc();
+
+  sz = p->sz;
+  p->sz = sz+n;
+  return sz;
+}
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -297,6 +312,8 @@ fork(void)
   }
   np->sz = p->sz;
 
+  proc_map(np);
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -308,6 +325,16 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
+  struct mmap* map = p->map;
+  struct mmap* nmap= np->map;
+
+  for(i = 0; i < MAPSIZE; i ++){
+    if(map->valid)
+      dommap(map->addr, map->length, map->prot, map->flags, map->file, map->offset);
+    map++;
+    nmap++;
+  }
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -360,6 +387,14 @@ exit(int status)
       p->ofile[fd] = 0;
     }
   }
+
+  struct mmap* map  = p->map;
+  for(int i = 0; i < MAPSIZE; i ++){
+    if(map->valid)
+      munmap(map->addr, map->length);
+    map++;
+  }
+
 
   begin_op();
   iput(p->cwd);
@@ -661,4 +696,91 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+uint64 munmap(uint64 addr, int length){
+  struct proc* p;
+  struct mmap* map;
+  struct file* f;
+  int i, r;
+  int ret = -1;
+  p = myproc();
+  map = p->map;
+
+  for(i = 0; i < MAPSIZE; i ++){
+    if(map->valid && addr < map->length + map->addr && addr >= map->addr)
+      break;
+    map ++;
+  }
+  if(i == MAPSIZE)
+    return -1;
+  
+  if(addr == map->addr){
+    if(map->flags == MAP_SHARED && map->prot & PROT_WRITE){
+      f = map->file;
+      if(f->writable == 0)
+        return -1;
+      int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
+      int i = 0;
+      while(i < length){
+        int n1 = length - i;
+        if(n1 > max)
+          n1 = max;
+
+        begin_op();
+        ilock(f->ip);
+        if ((r = writei(f->ip, 1, addr + i, map->offset, n1)) > 0)
+          map->offset += r;
+        iunlock(f->ip);
+        end_op();
+
+        if(r != n1){
+          // error from writei
+          break;
+        }
+        i += r;
+      }
+      ret = (i == length ? 0 : -1);      
+    }
+
+    map->addr += length;
+    map->length -= length;
+    if(map->length == 0){
+      fileclose(map->file);
+      map->valid = 0;
+    }
+  }else{
+    printf("addr is in the end\n");
+  }
+  return ret;
+}
+
+uint64 dommap(uint64 addr, int length, int prot, int flags, struct file* f, int offset){
+  int i;
+  struct proc* p;
+  struct mmap* map;
+  
+  p = myproc();
+  map = p->map;
+
+  for(i = 0; i < MAPSIZE; i ++){
+    if(!map->valid)
+      break;
+    map ++;
+  }
+  if(i == MAPSIZE)
+    panic("No free mmap.");
+
+  map->addr   = p->sz;
+  if(mapgrow(length) < 0)
+    return -1;  
+  
+  
+  map->file     = filedup(f);;
+  map->length = length;
+  map->prot   = prot;
+  map->flags  = flags;
+  map->valid  = 1;
+  map->offset = offset;
+  return map->addr;
 }

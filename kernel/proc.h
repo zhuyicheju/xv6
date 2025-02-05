@@ -83,10 +83,11 @@ struct trapframe {
 struct mmap{
   int valid;
   uint64 addr;
-  size_t length;
-  int permission;
-  int fd;
-  size_t offset;
+  int length;
+  int prot;
+  int flags;
+  struct file* file;
+  int offset;
 };
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
