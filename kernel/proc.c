@@ -18,6 +18,8 @@ struct spinlock pid_lock;
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
+static void proc_mmap(struct proc* p); 
+
 extern char trampoline[]; // trampoline.S
 
 // helps ensure that wakeups of wait()ing
@@ -129,6 +131,7 @@ found:
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
+  p->map       = proc_map(p);
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -197,6 +200,11 @@ proc_pagetable(struct proc *p)
   }
 
   return pagetable;
+}
+
+//init the vma mmap of a proc
+static void proc_map(struct proc* p){
+  memset(&p->map,0,sizeof(p->map));
 }
 
 // Free a process's page table, and free the
