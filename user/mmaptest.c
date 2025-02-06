@@ -45,6 +45,7 @@ _v1(char *p)
       }
     } else {
       if (p[i] != 0) {
+        //printf("%c %d\n",p[i],p[i]);
         printf("mismatch at %d, wanted zero, got 0x%x\n", i, p[i]);
         err("v1 mismatch (2)");
       }

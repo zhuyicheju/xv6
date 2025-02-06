@@ -7,7 +7,7 @@
 #include "spinlock.h"
 #include "proc.h"
 
-uint64 dommap(uint64 addr, int length, int prot, int flags, struct file* f, int offset);
+uint64 dommap(uint64 addr, int length, int prot, int flags, struct file* f, int offset, struct proc* p);
 uint64 munmap(uint64 addr, int length);
 
 uint64
@@ -111,7 +111,7 @@ sys_mmap(void)
      argint(3, &flags) < 0 || argint(4, &fd) < 0 || argint(5, &offset) < 0)
     return -1;
 
-  return dommap(addr, length, prot, flags, myproc()->ofile[fd], offset);
+  return dommap(addr, length, prot, flags, myproc()->ofile[fd], offset, myproc());
   
 }
 
@@ -121,7 +121,7 @@ sys_munmap(void)
   uint64 addr;
   int length;
 
-  if(argaddr(0, &addr) < 0 || argint(0, &length) < 0)
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0)
     return -1;
 
   return munmap(addr, length);

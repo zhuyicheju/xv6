@@ -150,6 +150,10 @@ kerneltrap()
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
   
+  // if(r_scause() == 0xd || r_scause() == 0xf) {
+  //   pagefault();
+  //   return;
+  // }
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
   if(intr_get() != 0)
@@ -231,37 +235,56 @@ devintr()
 }
 
 void pagefault(){
-  uint64 va = r_stval(), pa;
+  uint64 va = r_stval();
   struct proc* p = myproc();
   if(va >= MAXVA) goto err;
   struct mmap* map;
   struct inode* ip;
-  int i, flags = 0;
-  int len;
+  int i, flags = 0, len;
+  char* mem;
+  pte_t* pte; //allocate a page
   
-  if(walk(p->pagetable, va, 0) != 0) //reallocate
+  pte = walk(p->pagetable, va, 1);
+  if(*pte)
     goto err;
 
   map = p->map;
   for(i = 0; i < MAPSIZE; i ++){
-    if(map->valid && map->addr <= va && map->length + map->addr > va)
+    if(map->valid  && map->addr <= va && map->length + map->addr > va)
       break;
     map ++;
   }
   if(i == MAPSIZE)
     goto err;
-  
   ip = map->file->ip;
-  flags |= map->flags;  
-  pte_t* pte = walk(p->pagetable, va, 1); //allocate a page
-  *pte |= flags;
-  pa = PTE2PA(*pte);
+  
+  int prot = map->prot;
+  if(prot & PROT_READ)
+    flags |= PTE_R;
+  if(prot & PROT_WRITE)
+    flags |= PTE_W;
+  if(prot & PROT_EXEC)
+    flags |= PTE_X;
+  
 
+  mem = kalloc();
+  if(mem == 0)
+    goto err;
+  memset(mem,0,PGSIZE);
+
+  if(mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, flags|PTE_U) != 0){
+    kfree(mem);
+    goto err;
+  }
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
   len = min(PGSIZE, map->length - (va-map->addr));
-
+  // int isize = max(ip->size - (va-map->addr), 0);
+  // len = min(len, isize);
+  // printf("%d\n",len);
+  // printf("%d\n",map->offset + (va-map->addr));
   ilock(ip);
-  readi(ip, 0, pa, map->offset + (va-map->addr), len);
+  readi(ip, 0, (uint64)mem, map->offset + (va-map->addr), len);
   iunlock(ip);
   return;
 
